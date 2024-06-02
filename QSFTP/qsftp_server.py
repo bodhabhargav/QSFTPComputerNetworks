@@ -15,27 +15,29 @@ class QSFTPServerProtocol(QuicConnectionProtocol):
         self.authenticated = False
         self.file_receiving = False
         self.received_file = None
+        self.received_file_name = None
 
     def quic_event_received(self, event):
         if isinstance(event, StreamDataReceived):
-            data = event.data.decode()
-            if data.startswith("CONN_REQUEST"):
-                self.handle_connection_request(event.stream_id, data)
-            elif data.startswith("CONN_TERMINATE"):
-                self.handle_connection_termination(event.stream_id, data)
-            elif data.startswith("ERROR"):
-                self.handle_error(event.stream_id, data)
-            elif self.authenticated and self.file_receiving:
-                self.handle_file_data(event.stream_id, event.data, event.end_stream)
+            if not self.authenticated:
+                data = event.data.decode()
+                if data.startswith("CONN_REQUEST"):
+                    self.handle_connection_request(event.stream_id, data)
+                elif data.startswith("CONN_TERMINATE"):
+                    self.handle_connection_termination(event.stream_id, data)
+                elif data.startswith("ERROR"):
+                    self.handle_error(event.stream_id, data)
+                else:
+                    self.send_error(event.stream_id, "Unauthorized or unexpected data")
             else:
-                self.send_error(event.stream_id, "Unauthorized or unexpected data")
+                self.handle_file_data(event.stream_id, event.data, event.end_stream)
 
     def handle_connection_request(self, stream_id, data):
         print("Connection request received.")
         self.authenticated = True  # Simplified for this example
-        self.file_receiving = True
         try:
-            self.received_file = open("received_file.txt", "wb")
+            self.received_file_name = data.split(":")[1]
+            self.received_file = open(self.received_file_name, "wb")
         except PermissionError:
             self.send_error(stream_id, "Permission Denied")
             return
