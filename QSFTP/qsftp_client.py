@@ -1,10 +1,11 @@
 import asyncio
+import os
+import sys
 from aioquic.asyncio import connect
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
 from aioquic.quic.events import HandshakeCompleted, StreamDataReceived
 import ssl
-import sys
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -29,6 +30,12 @@ async def send_data():
     configuration = QuicConfiguration(is_client=True)
     configuration.verify_mode = ssl.CERT_NONE  # Trust self-signed certificates
 
+    file_path = input("Enter the file path to send: ").strip()
+    if not os.path.isfile(file_path):
+        print("Error: File not found")
+        return
+    file_name = os.path.basename(file_path)
+
     async with connect('localhost', 5000, configuration=configuration, create_protocol=QSFTPClientProtocol) as protocol:
         await protocol.connected.wait()  # Wait for handshake to complete
 
@@ -36,7 +43,7 @@ async def send_data():
 
         # Send connection request
         control_stream_id = quic_connection.get_next_available_stream_id()
-        quic_connection.send_stream_data(control_stream_id, b"CONN_REQUEST", end_stream=True)
+        quic_connection.send_stream_data(control_stream_id, f"CONN_REQUEST:{file_name}".encode(), end_stream=True)
         await protocol.data_received.wait()
         response = protocol.received_data.decode()
         print("Server response:", response)
@@ -49,7 +56,6 @@ async def send_data():
         if response == "CONN_ACK":
             # Send file data on a new stream
             file_stream_id = quic_connection.get_next_available_stream_id()
-            file_path = "C:\\Users\\Coding\\PycharmProjects\\Sample.txt"
             try:
                 with open(file_path, "rb") as f:
                     while chunk := f.read(1024):
